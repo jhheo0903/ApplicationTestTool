@@ -1,6 +1,6 @@
 # ApplicationTestTool
 
-> 웹 및 데스크톱 애플리케이션 테스트를 위한 도구 모음 — 복잡한 설정 없이, AI 기반으로.
+> 웹 애플리케이션 테스트를 위한 도구 모음.
 
 [한국어](README.ko.md) | [English](README.md)
 

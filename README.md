@@ -1,6 +1,6 @@
 # ApplicationTestTool
 
-> A collection of tools for testing web and desktop applications — no complex setup, AI-powered.
+> A collection of tools for testing web applications.
 
 [한국어](README.ko.md) | English
 
