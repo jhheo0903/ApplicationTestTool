@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "E2E UI Test Agent"
+  },
+  "extDescription": {
+    "message": "자연어 시나리오로 어느 사이트든 AI가 자동 제어하는 테스트 에이전트"
+  }
+}

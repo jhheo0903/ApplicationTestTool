@@ -1,0 +1,156 @@
+# E2E UI Test Agent
+
+> AI-powered E2E web testing via Chrome or Edge extension — write tests in plain language, not code.
+
+[한국어](README.ko.md) | English
+
+An AI agent interprets natural language scenarios and directly controls your browser tab to execute tests on any website, with no additional setup required.
+
+---
+
+## Features
+
+- **No coding required** — describe what to test in plain text
+- **Works on any website** — no per-site configuration needed
+- **Multi-AI provider support** — Claude, OpenAI, Azure OpenAI, or Ollama
+- **Real-time visual feedback** — watch every step as it executes
+- **Handles complex UI** — jqGrid tables, jsTree nodes, React/Vue forms
+- **Bilingual UI** — Korean and English (auto-detected)
+
+---
+
+## How It Works
+
+```
+User enters a scenario in the side panel
+              ↓
+Reads the current page DOM
+(assigns unique IDs to all interactive elements)
+              ↓
+Sends DOM state + scenario to the AI provider
+              ↓
+AI decides the next action (click / fill / navigate / wait)
+              ↓
+Executes the action with visual feedback
+              ↓
+Repeats up to 20 steps → PASS / FAIL
+```
+
+---
+
+## Demo
+
+**Scenario:** Search for `'Hello, World'` in the search box and verify that results appear.
+
+```
+Step 1 — Thinking: Search input detected on the page. Filling it with the query.
+         Action: fill #search-input → "Hello, World"
+
+Step 2 — Thinking: Query entered. Clicking the search button to submit.
+         Action: click #search-btn
+
+Step 3 — Thinking: Results page loaded. Waiting for result items to render.
+         Action: wait
+
+Step 4 — Thinking: Result items are visible and contain "Hello, World". Goal achieved.
+         Action: done → ✅ PASS
+```
+
+---
+
+## Installation
+
+**Requirements**
+
+- Chrome 114+ or Edge 114+ (Side Panel API required)
+- An API key from at least one supported AI provider:
+  - [Anthropic Claude](https://console.anthropic.com/)
+  - [OpenAI](https://platform.openai.com/)
+  - Azure OpenAI
+  - [Ollama](https://ollama.com/) (local, no API key needed)
+- Internet connection (for cloud AI providers)
+
+**Load the Extension**
+
+1. Open `chrome://extensions` (or `edge://extensions`)
+2. Enable **Developer mode** (top-right toggle)
+3. Click **Load unpacked** and select this folder
+4. The extension icon appears in the toolbar — done
+
+---
+
+## Usage
+
+1. Navigate to the website you want to test
+2. Click the extension icon to open the side panel
+3. Go to **Settings**, select an AI provider, and enter your API key (saved locally, one-time)
+4. Switch to the **Scenario** tab
+5. Type a scenario or load a `.json` scenario file
+6. Click **Run Agent** and watch the steps execute in real time
+7. Review the PASS / FAIL result and full execution log
+
+### Writing Scenarios
+
+Write scenarios as plain-language descriptions of what to test and what to verify:
+
+```
+Type 'Hello, World' in the search box and verify that search results appear.
+```
+```
+Add an item to the cart and confirm navigation to the checkout page.
+```
+```
+Fill in all fields of the registration form and verify a success message appears after submission.
+```
+
+To run multiple scenarios in sequence, load a `.json` file:
+
+```json
+[
+  {
+    "id": "TC-001",
+    "title": "Search Test",
+    "description": "Verify search returns results",
+    "scenario": "Type 'Hello, World' in the search box and confirm results appear."
+  },
+  {
+    "id": "TC-002",
+    "title": "Cart Test",
+    "description": "Verify item can be added to cart",
+    "scenario": "Click the first product, add it to the cart, and confirm the cart count increases."
+  }
+]
+```
+
+See [`scenarios.example.json`](scenarios.example.json) for the full format reference.
+
+---
+
+## Supported Actions
+
+| Action | Description |
+|--------|-------------|
+| `click` | Click buttons, links, or tabs |
+| `fill` | Type text into inputs (React/Vue compatible) |
+| `navigate` | Go to a specific URL |
+| `wait` | Wait for async operations to complete |
+| `done` | Final PASS / FAIL verdict |
+
+---
+
+## AI Provider Configuration
+
+| Provider | Required Fields | Notes |
+|----------|----------------|-------|
+| **Claude** | API Key | Default: `claude-sonnet-4-6` |
+| **OpenAI** | API Key | Default: `gpt-4o` |
+| **Azure OpenAI** | API Key, Endpoint, Deployment, API Version | For enterprise deployments |
+| **Ollama** | Endpoint, Model | Local inference, no API key needed |
+
+API keys are stored in Chrome's local storage and never transmitted except to the configured provider endpoint.
+
+---
+
+## License
+
+MIT

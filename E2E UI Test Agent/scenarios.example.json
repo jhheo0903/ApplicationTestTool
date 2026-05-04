@@ -1,0 +1,26 @@
+[
+  {
+    "id": "SC-001",
+    "title": "Test Scenario 1",
+    "description": "Description of test scenario 1.",
+    "scenario": "Describe the specific steps and expected outcome for test scenario 1."
+  },
+  {
+    "id": "SC-002",
+    "title": "Test Scenario 2",
+    "description": "Description of test scenario 2.",
+    "scenario": "Describe the specific steps and expected outcome for test scenario 2."
+  },
+  {
+    "id": "SC-003",
+    "title": "Test Scenario 3",
+    "description": "Description of test scenario 3.",
+    "scenario": "Describe the specific steps and expected outcome for test scenario 3."
+  },
+  {
+    "id": "SC-004",
+    "title": "Test Scenario 4",
+    "description": "Description of test scenario 4.",
+    "scenario": "Describe the specific steps and expected outcome for test scenario 4."
+  }
+]
