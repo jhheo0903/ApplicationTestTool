@@ -32,6 +32,7 @@ const scenarioResults = new Map();
   // ── 설정 오버레이 ──
   document.getElementById('settingsBtn').addEventListener('click', toggleSettings);
   document.addEventListener('click', (e) => {
+    if (!e.target.isConnected) return; // 클릭 시 DOM에서 제거된 요소는 무시
     const overlay = document.getElementById('settingsOverlay');
     const btn = document.getElementById('settingsBtn');
     if (overlay && btn && !overlay.contains(e.target) && !btn.contains(e.target)) {
@@ -511,6 +512,11 @@ function renderProviderFields() {
   const container = document.getElementById('providerFields');
   container.innerHTML = '';
 
+  if (def.hasOAuthFlow) {
+    renderGitHubCopilotSettings(container);
+    return;
+  }
+
   def.fields.forEach(field => {
     const row = document.createElement('div');
     row.className = 'field-row';
@@ -540,6 +546,226 @@ function renderProviderFields() {
     row.appendChild(input);
     container.appendChild(row);
   });
+}
+
+// ─── GitHub Copilot 설정 UI ──────────────────────────
+
+let _ghDeviceFlowActive = false;
+let _ghDeviceFlowAbort  = false;
+
+async function renderGitHubCopilotSettings(container) {
+  const { t } = globalThis.i18n;
+  const configs = (await chrome.storage.local.get('providerConfigs')).providerConfigs || {};
+  const savedModel = configs.github_copilot?.model || '';
+  const { githubCopilotAuth: auth } = await chrome.storage.local.get('githubCopilotAuth');
+
+  const statusDiv = document.createElement('div');
+  statusDiv.id = 'ghAuthStatus';
+  statusDiv.className = 'gh-auth-status';
+  container.appendChild(statusDiv);
+
+  if (auth?.accessToken) {
+    // ── 로그인 완료 상태 ──────────────────────────────
+    statusDiv.innerHTML = `<span class="gh-logged-in-badge">✓ @${auth.username || 'GitHub 사용자'} ${t.ghLoggedIn}</span>`;
+
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'btn-gh-logout';
+    logoutBtn.textContent = t.ghLogout;
+    logoutBtn.addEventListener('click', doGitHubLogout);
+    statusDiv.appendChild(logoutBtn);
+
+    // 모델 선택 (Copilot API에서 가져온 목록)
+    const models = auth.models || [{ value: 'gpt-4o', label: 'GPT-4o' }];
+    const modelRow = document.createElement('div');
+    modelRow.className = 'field-row';
+    const modelLabel = document.createElement('span');
+    modelLabel.className = 'field-label';
+    modelLabel.textContent = 'Model';
+    const modelSelect = document.createElement('select');
+    modelSelect.className = 'field-select';
+    modelSelect.dataset.fieldKey = 'model';
+    models.forEach(m => {
+      const o = document.createElement('option');
+      o.value = m.value; o.textContent = m.label;
+      if (m.value === savedModel) o.selected = true;
+      modelSelect.appendChild(o);
+    });
+    modelRow.appendChild(modelLabel);
+    modelRow.appendChild(modelSelect);
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'btn-gh-copy';
+    refreshBtn.title = t.ghRefreshModels;
+    refreshBtn.textContent = '↻';
+    refreshBtn.addEventListener('click', async () => {
+      refreshBtn.textContent = '…';
+      refreshBtn.disabled = true;
+      try {
+        const { GithubCopilotAPI } = globalThis.AIProviders;
+        const newModels = await GithubCopilotAPI.fetchModels(auth.sessionToken, auth.accessToken);
+        const updated = { ...auth, models: newModels };
+        await chrome.storage.local.set({ githubCopilotAuth: updated });
+        renderProviderFields();
+      } catch {
+        refreshBtn.textContent = '↻';
+        refreshBtn.disabled = false;
+      }
+    });
+    modelRow.appendChild(refreshBtn);
+    container.appendChild(modelRow);
+  } else {
+    // ── 미로그인 상태 ──────────────────────────────────
+    const loginBtn = document.createElement('button');
+    loginBtn.id = 'ghLoginBtn';
+    loginBtn.className = 'btn-gh-login';
+    loginBtn.textContent = t.ghLogin;
+    loginBtn.addEventListener('click', () => startGitHubLogin(container));
+    statusDiv.appendChild(loginBtn);
+  }
+}
+
+async function startGitHubLogin(container) {
+  const { t } = globalThis.i18n;
+  const { GithubCopilotAPI } = globalThis.AIProviders;
+
+  _ghDeviceFlowActive = true;
+  _ghDeviceFlowAbort  = false;
+  document.getElementById('ghLoginBtn')?.remove();
+
+  let flow;
+  try {
+    showGhStatus(t.ghConnecting, 'info');
+    flow = await GithubCopilotAPI.startDeviceFlow();
+  } catch (e) {
+    showGhStatus(`❌ ${e.message}`, 'error');
+    _ghDeviceFlowActive = false;
+    return;
+  }
+
+  renderDeviceCodeUI(container, flow);
+
+  // 폴링
+  let interval = flow.interval || 5;
+  while (!_ghDeviceFlowAbort) {
+    await new Promise(r => setTimeout(r, interval * 1000));
+    if (_ghDeviceFlowAbort) break;
+
+    let result;
+    try {
+      result = await GithubCopilotAPI.checkDeviceToken(flow.device_code);
+    } catch { continue; }
+
+    if (result.access_token) {
+      await onGitHubLoginSuccess(result.access_token);
+      return;
+    }
+    if (result.error === 'access_denied') { showGhStatus(`❌ ${t.ghDenied}`, 'error'); break; }
+    if (result.error === 'expired_token') { showGhStatus(`❌ ${t.ghExpired}`, 'error'); break; }
+    if (result.error === 'slow_down')     { interval += 5; }
+    // authorization_pending → 계속 대기
+  }
+
+  _ghDeviceFlowActive = false;
+}
+
+function renderDeviceCodeUI(container, flow) {
+  const { t } = globalThis.i18n;
+  const statusDiv = document.getElementById('ghAuthStatus');
+  statusDiv.innerHTML = '';
+
+  const codeWrap = document.createElement('div');
+  codeWrap.className = 'gh-device-code-wrap';
+
+  const codeLabel = document.createElement('div');
+  codeLabel.className = 'gh-device-code-label';
+  codeLabel.textContent = t.ghDeviceCodeLabel;
+
+  const codeRow = document.createElement('div');
+  codeRow.className = 'gh-device-code-row';
+
+  const codeVal = document.createElement('span');
+  codeVal.className = 'gh-device-code-value';
+  codeVal.textContent = flow.user_code;
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'btn-gh-copy';
+  copyBtn.textContent = t.ghCopy;
+  copyBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(flow.user_code);
+    copyBtn.textContent = '✓';
+    setTimeout(() => { copyBtn.textContent = t.ghCopy; }, 1500);
+  });
+
+  const openBtn = document.createElement('button');
+  openBtn.className = 'btn-gh-open';
+  openBtn.textContent = t.ghOpenDevice;
+  openBtn.addEventListener('click', () => chrome.tabs.create({ url: flow.verification_uri }));
+
+  const spinner = document.createElement('div');
+  spinner.className = 'gh-spinner';
+  spinner.textContent = t.ghWaiting;
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-gh-cancel';
+  cancelBtn.textContent = t.ghCancel;
+  cancelBtn.addEventListener('click', () => {
+    _ghDeviceFlowAbort = true;
+    renderProviderFields();
+  });
+
+  codeRow.appendChild(codeVal);
+  codeRow.appendChild(copyBtn);
+  codeWrap.appendChild(codeLabel);
+  codeWrap.appendChild(codeRow);
+  codeWrap.appendChild(openBtn);
+  codeWrap.appendChild(spinner);
+  codeWrap.appendChild(cancelBtn);
+  statusDiv.appendChild(codeWrap);
+}
+
+async function onGitHubLoginSuccess(accessToken) {
+  const { t } = globalThis.i18n;
+  const { GithubCopilotAPI } = globalThis.AIProviders;
+
+  try {
+    showGhStatus(t.ghFetchingToken, 'info');
+    // getCopilotSessionToken이 null을 반환하면 GitHub Models API 모드로 동작
+    const sessionResult = await GithubCopilotAPI.getCopilotSessionToken(accessToken);
+    const sessionToken  = sessionResult?.token    || null;
+    const sessionExpiry = sessionResult?.expiresAt || 0;
+
+    const username = await GithubCopilotAPI.getUsername(accessToken);
+    showGhStatus(t.ghFetchingModels, 'info');
+    const models = await GithubCopilotAPI.fetchModels(sessionToken, accessToken);
+
+    await chrome.storage.local.set({
+      githubCopilotAuth: { accessToken, username, sessionToken, sessionExpiry, models },
+    });
+
+    _ghDeviceFlowActive = false;
+    renderProviderFields();
+  } catch (e) {
+    showGhStatus(`❌ ${e.message}`, 'error');
+    _ghDeviceFlowActive = false;
+  }
+}
+
+async function doGitHubLogout() {
+  await chrome.storage.local.remove('githubCopilotAuth');
+  renderProviderFields();
+}
+
+function showGhStatus(msg, type = 'info') {
+  const el = document.getElementById('ghAuthStatus');
+  if (!el) return;
+  const span = el.querySelector('.gh-status-msg') || (() => {
+    const s = document.createElement('div');
+    s.className = 'gh-status-msg';
+    el.appendChild(s);
+    return s;
+  })();
+  span.textContent = msg;
+  span.className = `gh-status-msg gh-status-${type}`;
 }
 
 // ─── 설정 저장/로드 ──────────────────────────────────
@@ -673,6 +899,7 @@ function setRunning(running) {
 // ─── 프롬프트 ────────────────────────────────────────
 
 function buildPrompt(state, scenario, history) {
+  debugger;
   const elemText = state.elements.length === 0
     ? '  (no interactable elements)'
     : state.elements.map(el => {
@@ -784,7 +1011,7 @@ Respond ONLY in the following JSON format (no markdown):
 
 // ─── 에이전트 시작 전 유효성 검사 ───────────────────
 
-function validateAgentConfig(t, config) {
+async function validateAgentConfig(t, config) {
   if (!globalThis.AIProviders) {
     appendLog(`<div class="log-error">${t.errProviders}</div>`);
     return false;
@@ -800,6 +1027,13 @@ function validateAgentConfig(t, config) {
   if (currentProvider === 'openai' && !config.apiKey) {
     appendLog(`<div class="log-error">${t.errApiKeyOpenAI}</div>`);
     return false;
+  }
+  if (currentProvider === 'github_copilot') {
+    const { githubCopilotAuth: auth } = await chrome.storage.local.get('githubCopilotAuth');
+    if (!auth?.accessToken) {
+      appendLog(`<div class="log-error">${t.errGitHubNotLoggedIn}</div>`);
+      return false;
+    }
   }
   return true;
 }
@@ -883,10 +1117,10 @@ async function runStep(t, tabId, config, scenario, history, step, providerLabel)
     appendLog(`<div class="log-info">${t.infoUrlChange(prevUrl.slice(0, 50), state.url.slice(0, 50))}</div>`);
   }
 
-  let parsed;
+  let result, usage;
   try {
     const { callAI } = globalThis.AIProviders;
-    parsed = await callAI(currentProvider, config, buildPrompt(state, scenario, history));
+    ({ result, usage } = await callAI(currentProvider, config, buildPrompt(state, scenario, history)));
   } catch (e) {
     removeThinking();
     appendLog(`<div class="log-error">${t.errAI(providerLabel, e.message)}</div>`);
@@ -894,7 +1128,10 @@ async function runStep(t, tabId, config, scenario, history, step, providerLabel)
   }
 
   removeThinking();
-  return { state, parsed };
+  if (usage && (usage.input || usage.output)) {
+    appendLog(`<div class="log-tokens">↑ ${usage.input.toLocaleString()} · ↓ ${usage.output.toLocaleString()} tokens</div>`);
+  }
+  return { state, parsed: result };
 }
 
 // ─── 단일 스텝 액션 실행 ─────────────────────────────
@@ -1008,7 +1245,7 @@ async function startAgent() {
   }
 
   const config = getCurrentConfig();
-  if (!validateAgentConfig(t, config)) return;
+  if (!await validateAgentConfig(t, config)) return;
 
   const { PROVIDERS } = globalThis.AIProviders;
   const providerLabel = PROVIDERS[currentProvider]?.label || currentProvider;

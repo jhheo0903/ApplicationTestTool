@@ -12,7 +12,7 @@ An AI agent interprets natural language scenarios and directly controls your bro
 
 - **No coding required** — describe what to test in plain text
 - **Works on any website** — no per-site configuration needed
-- **Multi-AI provider support** — Claude, OpenAI, Azure OpenAI, or Ollama
+- **Multi-AI provider support** — Claude, OpenAI, Azure OpenAI, Ollama, or GitHub Copilot
 - **Real-time visual feedback** — watch every step as it executes
 - **Handles complex UI** — jqGrid tables, jsTree nodes, React/Vue forms
 - **Bilingual UI** — Korean and English (auto-detected)
@@ -68,6 +68,7 @@ Step 4 — Thinking: Result items are visible and contain "Hello, World". Goal a
   - [OpenAI](https://platform.openai.com/)
   - Azure OpenAI
   - [Ollama](https://ollama.com/) (local, no API key needed)
+  - [GitHub Copilot](https://github.com/settings/tokens) (GitHub Personal Access Token)
 - Internet connection (for cloud AI providers)
 
 **Load the Extension**
@@ -146,8 +147,33 @@ See [`scenarios.example.json`](scenarios.example.json) for the full format refer
 | **OpenAI** | API Key | Default: `gpt-4o` |
 | **Azure OpenAI** | API Key, Endpoint, Deployment, API Version | For enterprise deployments |
 | **Ollama** | Endpoint, Model | Local inference, no API key needed |
+| **GitHub Copilot** | GitHub Token | Uses GitHub Models API; requires a GitHub account |
 
 API keys are stored in Chrome's local storage and never transmitted except to the configured provider endpoint.
+
+---
+
+## GitHub Copilot Setup
+
+GitHub Copilot support uses the **GitHub Copilot API** (`api.githubcopilot.com`) via OAuth Device Flow — no manual token copying or app registration required. You log in directly through GitHub, and the extension automatically fetches the list of models available under your Copilot subscription.
+
+### How to Log In
+
+1. Click the extension icon → open the side panel
+2. Click the gear icon (⚙) to open Settings
+3. Select the **GitHub Copilot** tab
+4. Click **Login with GitHub**
+5. A **device code** (e.g. `XXXX-XXXX`) appears in the panel
+6. Click **Enter code on GitHub →** — this opens `github.com/login/device` in a new tab
+7. Enter the code and authorize
+8. Return to the extension — it detects authorization and fetches your Copilot models automatically
+9. Select a model and click **Save**
+
+### Session Management
+
+- Login persists across extension reloads (stored in Chrome local storage)
+- Copilot session tokens expire after 30 minutes and are **auto-refreshed** before each test run
+- Click **Logout** in Settings to clear the session
 
 ---
 

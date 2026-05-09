@@ -16,7 +16,11 @@
     "<all_urls>",
     "https://api.anthropic.com/",
     "https://api.openai.com/",
-    "https://*.openai.azure.com/"
+    "https://*.openai.azure.com/",
+    "https://models.inference.ai.azure.com/",
+    "https://github.com/",
+    "https://api.github.com/",
+    "https://api.githubcopilot.com/"
   ],
   "action": {
     "default_title": "E2E UI Test Agent 열기",
