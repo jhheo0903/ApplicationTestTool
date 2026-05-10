@@ -14,7 +14,7 @@ A Chrome/Edge extension that lets you write E2E web tests in plain language. An 
 
 - No coding required
 - Works on any website
-- Supports Claude, OpenAI, Azure OpenAI, and Ollama
+- Supports Claude, OpenAI, Azure OpenAI, Ollama and Github Copilot
 
 ---
 
