@@ -14,7 +14,7 @@
 
 - 코딩 불필요
 - 모든 웹사이트에서 동작
-- Claude, OpenAI, Azure OpenAI, Ollama 지원
+- Claude, OpenAI, Azure OpenAI, Ollama, Github Copilot 지원
 
 ---
 
