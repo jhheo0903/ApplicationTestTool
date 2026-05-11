@@ -367,6 +367,18 @@ body {
   transition: all 0.15s; flex-shrink: 0;
 }
 .btn-load:hover { border-color: var(--accentbd); color: var(--accent2); }
+.btn-refresh {
+  padding: 5px 8px;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer; flex-shrink: 0;
+  transition: all 0.15s;
+}
+.btn-refresh-keep:hover  { border-color: var(--greenbd); color: var(--green); }
+.btn-refresh-reset:hover { border-color: rgba(251,191,36,0.3); color: var(--yellow); }
 .load-msg {
   padding: 4px 12px;
   font-size: 10px; font-family: var(--mono);
@@ -755,6 +767,10 @@ body.agent-running .scenario-item { cursor: default; }
         <input type="text" class="path-input" id="jsonPathInput"
           data-i18n-placeholder="pathPlaceholder" placeholder="Select a file to show the path" readonly />
         <button class="btn-load" id="loadBtn" data-i18n="btnLoad">Load</button>
+        <button class="btn-refresh btn-refresh-keep" id="refreshKeepBtn" hidden
+          data-i18n-title="refreshKeepTitle">↻</button>
+        <button class="btn-refresh btn-refresh-reset" id="refreshResetBtn" hidden
+          data-i18n-title="refreshResetTitle">↺</button>
       </div>
       <div class="load-msg" id="loadStatus"></div>
       <div class="scenario-list" id="scenarioList">

@@ -67,6 +67,12 @@
       '[role="switch"]',
       '[role="row"]',
       '[role="gridcell"]',
+      // 커스텀 드롭다운 — listbox/combobox/option
+      '[role="option"]',
+      '[role="listbox"]',
+      '[role="combobox"]:not([disabled])',
+      // collapse/accordion 트리거 — 버튼이 아닌 요소에 aria-expanded가 붙는 경우
+      '[aria-expanded]:not(button):not(a):not([role="button"]):not([disabled])',
       // jqGrid 행
       'tr[tabindex]',
       'tr.jqgrow',
@@ -75,6 +81,9 @@
       'a.jstree-anchor',
       // jsTree 토글 버튼 (펼치기/닫기)
       'i.jstree-ocl',
+      // onclick 속성이 직접 붙은 비인터랙티브 요소 (div/span 카드 등)
+      // 자식에 이미 캡처되는 요소가 있으면 제외 — 부모+자식 중복 방지
+      '[onclick]:not(button):not(a):not(input):not(select):not(textarea):not(:has(a[href])):not(:has(button)):not([data-agent-id])',
       // tabindex로 포커스 가능한 요소
       // a[href]/button/input 등 이미 위 선택자로 잡히는 태그는 제외
       // 또한 클릭 가능한 자식 요소(a, button)를 이미 포함하는 li/div는 제외 —
@@ -165,11 +174,10 @@
       };
     });
 
-    const bodyClone = document.body.cloneNode(true);
-    bodyClone.querySelectorAll(
-      'script, style, noscript, svg, [data-agent-id], #__page_agent_highlight__'
-    ).forEach(el => el.remove());
-    const visibleText = (bodyClone.textContent || '')
+    // innerText는 브라우저 레이아웃을 기준으로 텍스트를 수집하므로
+    // display:none / visibility:hidden 요소는 자동으로 제외된다.
+    // textContent(클론 DOM)는 숨겨진 요소도 포함해 AI 검증 판단을 흔들 수 있다.
+    const visibleText = (document.body.innerText || '')
       .replaceAll(/\s+/g, ' ').trim().slice(0, 1500);
 
     // 검증용: label-value 쌍 및 읽기 전용 필드값 추출
@@ -313,8 +321,10 @@
       return;
     }
 
+    // el.click()이 click 이벤트를 발생시키므로 dispatchMouseEvents에는 포함하지 않는다.
+    // 'click'을 중복 포함하면 토글 버튼(즐겨찾기 등)이 ON→OFF로 되돌아가는 문제가 생긴다.
     el.click();
-    dispatchMouseEvents(el, ['mousedown', 'mouseup', 'click'], {});
+    dispatchMouseEvents(el, ['mousedown', 'mouseup'], {});
   }
 
   function executeAction(action) {

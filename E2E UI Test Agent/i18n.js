@@ -15,6 +15,8 @@ const MESSAGES = {
     // 시나리오 탭
     pathPlaceholder:      '파일 선택 후 경로가 표시됩니다',
     btnLoad:              '불러오기',
+    refreshKeepTitle:     '상태 유지 새로고침 — 이전 Pass/Fail 결과를 유지한 채 파일을 다시 읽습니다',
+    refreshResetTitle:    '상태 초기화 새로고침 — Pass/Fail 결과를 초기화하고 파일을 다시 읽습니다',
     scenarioEmptyTitle:   '불러오기로 JSON 파일을 선택하세요',
     scenarioEmptyDesc:    '시나리오 목록이 여기에 표시됩니다',
     btnRun:               '▶ 실행',
@@ -97,6 +99,8 @@ const MESSAGES = {
     // Scenario tab
     pathPlaceholder:      'Select a file to show the path',
     btnLoad:              'Load',
+    refreshKeepTitle:     'Reload keeping results — Re-reads the file while preserving previous Pass/Fail results',
+    refreshResetTitle:    'Reload resetting results — Re-reads the file and clears all Pass/Fail results',
     scenarioEmptyTitle:   'Select a JSON file via Load',
     scenarioEmptyDesc:    'Scenario list will appear here',
     btnRun:               '▶ Run',

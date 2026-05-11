@@ -4,6 +4,8 @@
 let currentProvider = 'claude';
 let loadedScenarios = [];    // 불러온 시나리오 목록
 let selectedScenario = null; // 현재 선택된 시나리오
+let lastLoadedFileText = null; // 마지막으로 읽은 파일 내용 (새로고침 폴백용)
+let fileHandle = null;        // FileSystemFileHandle — 파일 재읽기(새로고침)용
 
 // 시나리오 인덱스 → 'pass' | 'fail' 결과 보존 (파일 재로드 전까지 유지)
 const scenarioResults = new Map();
@@ -23,11 +25,11 @@ const scenarioResults = new Map();
   // ── 설정 저장 ──
   document.getElementById('saveBtn').addEventListener('click', saveProviderConfig);
 
-  // ── 파일 불러오기 ──
-  document.getElementById('loadBtn').addEventListener('click', () => {
-    document.getElementById('jsonFileInput').click();
-  });
-  document.getElementById('jsonFileInput').addEventListener('change', loadScenarios);
+  // ── 파일 불러오기 / 새로고침 ──
+  document.getElementById('loadBtn').addEventListener('click', openFileAndLoad);
+  document.getElementById('jsonFileInput').addEventListener('change', loadScenariosFallback);
+  document.getElementById('refreshKeepBtn').addEventListener('click', () => reloadScenarios(true));
+  document.getElementById('refreshResetBtn').addEventListener('click', () => reloadScenarios(false));
 
   // ── 설정 오버레이 ──
   document.getElementById('settingsBtn').addEventListener('click', toggleSettings);
@@ -128,6 +130,12 @@ function applyI18n() {
     if (typeof t[key] === 'string') el.innerHTML = t[key].replaceAll('\n', '<br>');
   });
 
+  // data-i18n-title: title 속성 교체 (툴팁 다국어 처리)
+  document.querySelectorAll('[data-i18n-title]').forEach(el => {
+    const key = el.dataset.i18nTitle;
+    if (typeof t[key] === 'string') el.title = t[key];
+  });
+
   // settingsBtn title
   document.getElementById('settingsBtn').title = t.settingsTitle;
 }
@@ -162,40 +170,93 @@ function switchTab(tab) {
 
 // ─── 시나리오 JSON 불러오기 (로컬 파일) ─────────────
 
-function loadScenarios(e) {
-  const { t } = window.i18n;
+function applyScenarioText(text, reset) {
+  const { t } = globalThis.i18n;
+  try {
+    const data = JSON.parse(text);
+    const list = Array.isArray(data) ? data : data.scenarios || [];
+    if (list.length === 0) throw new Error(t.loadErrEmpty);
+
+    if (reset) {
+      scenarioResults.clear();
+      deselectScenario();
+    }
+    loadedScenarios = list;
+    renderScenarioList();
+    setLoadStatus(t.loadOk(list.length), 'ok');
+    document.getElementById('refreshKeepBtn').hidden = false;
+    document.getElementById('refreshResetBtn').hidden = false;
+  } catch (err) {
+    setLoadStatus(t.loadErrParse(err.message), 'err');
+    renderScenarioListEmpty(t.parseFail(err.message));
+  }
+}
+
+// ── File System Access API 파일 열기 ─────────────────────
+async function openFileAndLoad() {
+  const { t } = globalThis.i18n;
+  if (window.showOpenFilePicker) {
+    try {
+      [fileHandle] = await window.showOpenFilePicker({
+        types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+        multiple: false,
+      });
+      await readFromFileHandle(true);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        setLoadStatus(`${t.loadErrRead}: ${err.message}`, 'err');
+      }
+    }
+  } else {
+    // 폴백: 숨겨진 input[type=file] 사용
+    document.getElementById('jsonFileInput').click();
+  }
+}
+
+async function readFromFileHandle(reset) {
+  if (!fileHandle) return;
+  const { t } = globalThis.i18n;
+  try {
+    const file = await fileHandle.getFile();
+    document.getElementById('jsonPathInput').value = file.name;
+    setLoadStatus('', '');
+    const text = await file.text();
+    lastLoadedFileText = text;
+    applyScenarioText(text, reset);
+  } catch (err) {
+    setLoadStatus(t.loadErrRead, 'err');
+    renderScenarioListEmpty(t.fileReadFail);
+  }
+}
+
+async function reloadScenarios(keepResults) {
+  if (fileHandle) {
+    await readFromFileHandle(!keepResults);
+  } else if (lastLoadedFileText) {
+    applyScenarioText(lastLoadedFileText, !keepResults);
+  }
+}
+
+// 폴백: input[type=file] 경유 로드 (showOpenFilePicker 미지원 환경)
+function loadScenariosFallback(e) {
+  const { t } = globalThis.i18n;
   const file = e.target.files?.[0];
   if (!file) return;
 
+  fileHandle = null; // 파일 핸들 없음 — 새로고침 시 캐시 텍스트 사용
   document.getElementById('jsonPathInput').value = file.name;
   setLoadStatus('', '');
 
   const reader = new FileReader();
-
-  reader.onload = (ev) => {
-    try {
-      const data = JSON.parse(ev.target.result);
-
-      const list = Array.isArray(data) ? data : data.scenarios || [];
-      if (list.length === 0) throw new Error(t.loadErrEmpty);
-
-      loadedScenarios = list;
-      renderScenarioList();
-      setLoadStatus(t.loadOk(list.length), 'ok');
-
-    } catch (err) {
-      setLoadStatus(t.loadErrParse(err.message), 'err');
-      renderScenarioListEmpty(t.parseFail(err.message));
-    }
+  reader.onload = ev => {
+    lastLoadedFileText = ev.target.result;
+    applyScenarioText(lastLoadedFileText, true);
   };
-
   reader.onerror = () => {
     setLoadStatus(t.loadErrRead, 'err');
     renderScenarioListEmpty(t.fileReadFail);
   };
-
   reader.readAsText(file, 'UTF-8');
-
   e.target.value = '';
 }
 
@@ -898,43 +959,84 @@ function setRunning(running) {
 
 // ─── 프롬프트 ────────────────────────────────────────
 
+// [토큰 절약 — 엘리먼트 직렬화 압축]
+// 엘리먼트당 text / ariaLabel / placeholder / name / value 중 가장 의미 있는
+// 레이블 하나만 선택하고 나머지 중복 속성을 생략한다.
+// 기존 방식은 모든 속성을 나열해 엘리먼트 수가 많을수록 입력 토큰이 크게 늘었다.
+function serializeElement(el) {
+  // 우선순위: text > ariaLabel > placeholder > name > value
+  const label = el.text || el.ariaLabel || el.placeholder || el.name || el.value || '';
+
+  let line = `  [${el.id}] <${el.tag}${el.type ? ':' + el.type : ''}>`;
+
+  if (el.isTableRow)        line += ' [table-row-clickable]';
+  if (el.isJsTreeToggle)    line += ' [tree-toggle-btn]';
+  if (el.isJsTreeNode)      line += ' [tree-node-select]';
+  if (el.isJqGridCheckbox)  line += ` [jqgrid-checkbox checked=${el.checked}]`;
+  else if (el.checked !== null) line += ` checked=${el.checked}`;
+
+  if (label)                line += ` "${label.slice(0, 40)}"`;
+  // 현재 입력값은 레이블과 다를 때만 추가 (중복 방지)
+  if (el.value && el.value !== label) line += ` =${el.value.slice(0, 30)}`;
+  if (el.href && !el.href.startsWith('#')) line += ` →${el.href.slice(0, 40)}`;
+
+  return line;
+}
+
+// [토큰 절약 — 히스토리 압축]
+// 스텝이 쌓일수록 히스토리 전체를 매번 전송해 토큰이 누적 증가하는 문제를 완화한다.
+// 최근 HISTORY_RECENT 개 스텝은 AI 판단에 필요한 thinking까지 유지하고,
+// 그보다 오래된 스텝은 액션과 URL 변화만 남겨 간략히 전달한다.
+const HISTORY_RECENT = 1;
+
+function serializeHistory(history) {
+  if (history.length === 0) return '  none';
+
+  const olderSteps = history.slice(0, -HISTORY_RECENT); // 압축 대상, 뒤에서 HISTORY_RECENT개 제외
+  const recentSteps = history.slice(-HISTORY_RECENT);   // 상세 유지
+
+  const lines = [];
+
+  // 오래된 스텝: 액션 종류와 URL 변화만 (thinking 생략)
+  olderSteps.forEach((h, i) => {
+    const a = h.action;
+    let s;
+    if      (a.type === 'click')    s = `click(${a.elementId})`;
+    else if (a.type === 'fill')     s = `fill(${a.elementId},"${(a.value || '').slice(0, 20)}")`;
+    else if (a.type === 'navigate') s = `navigate(${a.url})`;
+    else if (a.type === 'wait')     s = `wait(${a.ms}ms)`;
+    else                            s = 'done';
+    const urlChange = (h.urlAfter && h.urlAfter !== h.url)
+      ? ` [url→${h.urlAfter.slice(0, 40)}]` : '';
+    lines.push(`  ${i + 1}. ${s}${urlChange}`);
+  });
+
+  // 최근 스텝: 기존 상세 형식 유지 (thinking 포함)
+  const offset = olderSteps.length;
+  recentSteps.forEach((h, i) => {
+    const a = h.action;
+    let s;
+    if      (a.type === 'click')    s = `click(${a.elementId})`;
+    else if (a.type === 'fill')     s = `fill(${a.elementId},"${a.value}")`;
+    else if (a.type === 'navigate') s = `navigate(${a.url})`;
+    else if (a.type === 'wait')     s = `wait(${a.ms}ms)`;
+    else                            s = 'done';
+    // urlAfter: 해당 액션 실행 후 다음 스텝에서 읽힌 실제 URL
+    const urlChange = (h.urlAfter && h.urlAfter !== h.url)
+      ? ` [url-changed→${h.urlAfter.slice(0, 60)}]` : '';
+    lines.push(`  ${offset + i + 1}. ${s}${urlChange} — ${h.thinking.slice(0, 60)}`);
+  });
+
+  return lines.join('\n');
+}
+
 function buildPrompt(state, scenario, history) {
   debugger;
   const elemText = state.elements.length === 0
     ? '  (no interactable elements)'
-    : state.elements.map(el => {
-        let line = `  [${el.id}] <${el.tag}${el.type ? ':' + el.type : ''}>`;
-        if (el.isTableRow)        line += ' [table-row-clickable]';
-        if (el.isJsTreeToggle)    line += ' [tree-toggle-btn]';
-        if (el.isJsTreeNode)      line += ' [tree-node-select]';
-        if (el.isJqGridCheckbox)  line += ` [jqgrid-checkbox checked=${el.checked}]`;
-        if (el.checked !== null && !el.isJqGridCheckbox) line += ` checked=${el.checked}`;
-        if (el.ariaLabel)   line += ` aria="${el.ariaLabel}"`;
-        if (el.placeholder) line += ` placeholder="${el.placeholder}"`;
-        if (el.name)        line += ` name="${el.name}"`;
-        if (el.value)       line += ` value="${el.value}"`;
-        if (el.text && el.text !== el.value) line += ` "${el.text.slice(0, 80)}"`;
-        if (el.href && !el.href.startsWith('#')) line += ` → ${el.href.slice(0, 50)}`;
-        return line;
-      }).join('\n');
+    : state.elements.map(serializeElement).join('\n');
 
-  const histText = history.length === 0 ? '  none'
-    : history.map((h, i) => {
-        const a = h.action;
-        let s;
-        if      (a.type === 'click')    s = `click(${a.elementId})`;
-        else if (a.type === 'fill')     s = `fill(${a.elementId},"${a.value}")`;
-        else if (a.type === 'navigate') s = `navigate(${a.url})`;
-        else if (a.type === 'wait')     s = `wait(${a.ms}ms)`;
-        else                            s = 'done';
-
-        // urlAfter: 해당 액션 실행 후 다음 스텝에서 읽힌 실제 URL
-        let urlChange = '';
-        if (h.urlAfter && h.urlAfter !== h.url) {
-          urlChange = ` [url-changed→${h.urlAfter.slice(0, 60)}]`;
-        }
-        return `  ${i + 1}. ${s}${urlChange} — ${h.thinking.slice(0, 60)}`;
-      }).join('\n');
+  const histText = serializeHistory(history);
 
   const fieldValuesText = state.fieldValues?.length
     ? state.fieldValues.join('\n')
@@ -1040,12 +1142,19 @@ async function validateAgentConfig(t, config) {
 
 // ─── 액션 문자열 변환 ────────────────────────────────
 
-function actionToString(a) {
-  if (a.type === 'click')    return `click(${a.elementId})`;
-  if (a.type === 'fill')     return `fill(${a.elementId},"${a.value}")`;
-  if (a.type === 'navigate') return 'navigate(...)';
-  if (a.type === 'wait')     return `wait(${a.ms}ms)`;
-  return `done→${a.pass ? 'PASS' : 'FAIL'}`;
+function elLabel(elementId, elements) {
+  const el = elements?.find(e => e.id === elementId);
+  if (!el) return elementId;
+  const raw = el.text || el.ariaLabel || el.placeholder || el.name || elementId;
+  return `"${raw.slice(0, 30)}"`;
+}
+
+function actionToString(a, elements) {
+  if (a.type === 'click')    return `click ${elLabel(a.elementId, elements)}`;
+  if (a.type === 'fill')     return `fill ${elLabel(a.elementId, elements)} ← "${(a.value || '').slice(0, 20)}"`;
+  if (a.type === 'navigate') return `navigate → ${(a.url || '').slice(0, 40)}`;
+  if (a.type === 'wait')     return `wait ${a.ms ?? ''}ms`;
+  return `done → ${a.pass ? 'PASS' : 'FAIL'}`;
 }
 
 // ─── 결과 카드 출력 ──────────────────────────────────
@@ -1086,6 +1195,7 @@ function detectDuplicate(t, history, a, step, providerLabel) {
 // ─── 단일 스텝 DOM 읽기 + AI 호출 ───────────────────
 
 async function runStep(t, tabId, config, scenario, history, step, providerLabel) {
+  debugger;
   showThinking(step);
 
   let domResp;
@@ -1168,7 +1278,7 @@ async function executeStep(t, tabId, a) {
 
 // ─── 스텝 로그 카드 출력 ────────────────────────────
 
-function appendStepLog(step, a, thinking, providerLabel) {
+function appendStepLog(step, a, thinking, providerLabel, elements) {
   // done 스텝은 reason이 핵심 정보이므로 기본 열림, 나머지는 기본 접힘
   const isDone = a.type === 'done';
   const reasonHtml = isDone && a.reason
@@ -1180,7 +1290,7 @@ function appendStepLog(step, a, thinking, providerLabel) {
   card.innerHTML = `
     <div class="log-step-head" role="button" tabindex="0">
       <span class="badge-step">STEP ${step}</span>
-      <span class="badge-action">${actionToString(a)}</span>
+      <span class="badge-action">${actionToString(a, elements)}</span>
       <span class="badge-provider">${providerLabel}</span>
       <span class="badge-toggle">▾</span>
     </div>
@@ -1216,7 +1326,7 @@ async function runAgentLoop(t, tabId, config, scenario, providerLabel) {
     const { state, parsed } = result;
     const a = parsed.action;
 
-    appendStepLog(step, a, parsed.thinking, providerLabel);
+    appendStepLog(step, a, parsed.thinking, providerLabel, state.elements);
     history.push({ step, thinking: parsed.thinking, action: a, url: state.url, urlAfter: null });
 
     if (detectDuplicate(t, history, a, step, providerLabel)) break;

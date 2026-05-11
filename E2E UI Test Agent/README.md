@@ -14,7 +14,8 @@ An AI agent interprets natural language scenarios and directly controls your bro
 - **Works on any website** — no per-site configuration needed
 - **Multi-AI provider support** — Claude, OpenAI, Azure OpenAI, Ollama, or GitHub Copilot
 - **Real-time visual feedback** — watch every step as it executes
-- **Handles complex UI** — jqGrid tables, jsTree nodes, React/Vue forms
+- **Handles complex UI** — jqGrid tables, jsTree nodes, dropdowns, collapsibles, card elements, React/Vue forms
+- **Token usage display** — input and output token counts shown per step in the run log
 - **Bilingual UI** — Korean and English (auto-detected)
 
 ---
@@ -44,16 +45,17 @@ Repeats up to 20 steps → PASS / FAIL
 
 ```
 Step 1 — Thinking: Search input detected on the page. Filling it with the query.
-         Action: fill #search-input → "Hello, World"
+         Action: fill "Search…" ← "Hello, World"
 
 Step 2 — Thinking: Query entered. Clicking the search button to submit.
-         Action: click #search-btn
+         Action: click "Search"
 
 Step 3 — Thinking: Results page loaded. Waiting for result items to render.
-         Action: wait
+         Action: wait 1000ms
 
 Step 4 — Thinking: Result items are visible and contain "Hello, World". Goal achieved.
          Action: done → ✅ PASS
+         ↑ 1,243 · ↓ 89 tokens
 ```
 
 ---
@@ -68,7 +70,7 @@ Step 4 — Thinking: Result items are visible and contain "Hello, World". Goal a
   - [OpenAI](https://platform.openai.com/)
   - Azure OpenAI
   - [Ollama](https://ollama.com/) (local, no API key needed)
-  - [GitHub Copilot](https://github.com/settings/tokens) (GitHub Personal Access Token)
+  - [GitHub Copilot](https://github.com/settings/tokens) (GitHub account with Copilot subscription)
 - Internet connection (for cloud AI providers)
 
 **Load the Extension**
@@ -86,13 +88,13 @@ Step 4 — Thinking: Result items are visible and contain "Hello, World". Goal a
 2. Click the extension icon to open the side panel
 3. Go to **Settings**, select an AI provider, and enter your API key (saved locally, one-time)
 4. Switch to the **Scenario** tab
-5. Type a scenario or load a `.json` scenario file
+5. Type a scenario or load a `.json` scenario file via **Load**
 6. Click **Run Agent** and watch the steps execute in real time
 7. Review the PASS / FAIL result and full execution log
 
 ### Writing Scenarios
 
-Write scenarios as plain-language descriptions of what to test and what to verify:
+Write scenarios as plain-language descriptions of what to do and what to verify:
 
 ```
 Type 'Hello, World' in the search box and verify that search results appear.
@@ -103,6 +105,18 @@ Add an item to the cart and confirm navigation to the checkout page.
 ```
 Fill in all fields of the registration form and verify a success message appears after submission.
 ```
+
+### Verification Tips
+
+The AI verifies results by reading visible page text and structured field values. For the most reliable verification, **write the final step as a navigation action** rather than a passive "confirm" check:
+
+| Less reliable | More reliable |
+|---|---|
+| `... > confirm the app appears in favorites` | `... > click the app link in the favorites list to navigate to its detail page` |
+
+When a click causes a URL change, the agent automatically recognizes success. This is especially important for AJAX-based actions (favorites, toggles, status changes) that update the DOM without changing the URL.
+
+### Loading Multiple Scenarios
 
 To run multiple scenarios in sequence, load a `.json` file:
 
@@ -131,7 +145,7 @@ See [`scenarios.example.json`](scenarios.example.json) for the full format refer
 
 | Action | Description |
 |--------|-------------|
-| `click` | Click buttons, links, or tabs |
+| `click` | Click buttons, links, tabs, dropdowns, cards, or any interactive element |
 | `fill` | Type text into inputs (React/Vue compatible) |
 | `navigate` | Go to a specific URL |
 | `wait` | Wait for async operations to complete |
@@ -147,7 +161,7 @@ See [`scenarios.example.json`](scenarios.example.json) for the full format refer
 | **OpenAI** | API Key | Default: `gpt-4o` |
 | **Azure OpenAI** | API Key, Endpoint, Deployment, API Version | For enterprise deployments |
 | **Ollama** | Endpoint, Model | Local inference, no API key needed |
-| **GitHub Copilot** | GitHub Token | Uses GitHub Models API; requires a GitHub account |
+| **GitHub Copilot** | — | OAuth login via GitHub; no token required |
 
 API keys are stored in Chrome's local storage and never transmitted except to the configured provider endpoint.
 
@@ -155,7 +169,7 @@ API keys are stored in Chrome's local storage and never transmitted except to th
 
 ## GitHub Copilot Setup
 
-GitHub Copilot support uses the **GitHub Copilot API** (`api.githubcopilot.com`) via OAuth Device Flow — no manual token copying or app registration required. You log in directly through GitHub, and the extension automatically fetches the list of models available under your Copilot subscription.
+GitHub Copilot support uses the **GitHub Copilot API** (`api.githubcopilot.com`) via OAuth Device Flow — no manual token copying or app registration required. You log in directly through GitHub, and the extension fetches the model list from your Copilot subscription automatically (the same models shown in VS Code, filtered and sorted alphabetically).
 
 ### How to Log In
 
